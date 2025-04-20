@@ -147,7 +147,7 @@ async function init() {
 	scene.add( group );
 
 	// Use custom model URL if available, otherwise use the default URL
-	const modelUrl = window.customModelUrl || 'https://raw.githubusercontent.com/gkjohnson/3d-demo-data/main/models/nasa-m2020/Perseverance.glb';
+	const modelUrl = window.customModelUrl || './drill_10mm_100mm.glb';
 	
 	const gltf = await new GLTFLoader()
 		.setMeshoptDecoder( MeshoptDecoder )
