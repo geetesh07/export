@@ -129,7 +129,6 @@ export class ProjectionGenerator {
 
 			}
 
-
 		} );
 
 	}
@@ -311,7 +310,7 @@ export class ProjectionGenerator {
 
 		}
 
-		return finalEdges.getLineGeometry( 0 );
+		return finalEdges;
 
 	}
 

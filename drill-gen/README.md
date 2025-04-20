@@ -10,7 +10,6 @@ The edge projection system allows you to project the edges of a 3D model onto a 
 
 - **src/ProjectionGenerator.js**: The main class that handles the edge projection logic
 - **src/utils/**: Utility functions for edge detection, intersection handling, etc.
-- **src/worker/**: Worker implementations for better performance with large models
 - **index.html**: A simple example showing how to use the system
 
 ## Dependencies
@@ -56,11 +55,11 @@ const task = generator.generate(processedGeometry, {
 });
 
 // 6. Process the generator task
-async function processProjection() {
+function* processProjection() {
   let result = task.next();
   while (!result.done) {
     // Do other things if needed
-    await new Promise(resolve => setTimeout(resolve, 0));
+    yield;
     result = task.next();
   }
   
