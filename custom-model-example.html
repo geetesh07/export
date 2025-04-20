@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Edge Projection with Custom Three.js Model</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <style type="text/css">
+        html, body {
+            padding: 0;
+            margin: 0;
+            overflow: hidden;
+            font-family: monospace;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        #output {
+            color: #333;
+            position: absolute;
+            left: 10px;
+            bottom: 10px;
+            white-space: pre;
+        }
+
+        #info {
+            position: absolute;
+            top: 0;
+            width: 100%;
+            color: #333;
+            font-family: monospace;
+            text-align: center;
+            padding: 5px 0;
+        }
+
+        #controls {
+            position: absolute;
+            top: 40px;
+            right: 10px;
+            z-index: 100;
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            max-width: 250px;
+        }
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.136.0/build/three.module.js",
+                "three/examples/jsm/libs/lil-gui.module.min.js": "https://unpkg.com/three@0.136.0/examples/jsm/libs/lil-gui.module.min.js",
+                "three/examples/jsm/controls/OrbitControls.js": "https://unpkg.com/three@0.136.0/examples/jsm/controls/OrbitControls.js",
+                "three/examples/jsm/loaders/GLTFLoader.js": "https://unpkg.com/three@0.136.0/examples/jsm/loaders/GLTFLoader.js",
+                "three/examples/jsm/utils/BufferGeometryUtils.js": "https://unpkg.com/three@0.136.0/examples/jsm/utils/BufferGeometryUtils.js",
+                "three-mesh-bvh": "https://unpkg.com/three-mesh-bvh@0.5.19/build/index.module.js"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="info">
+        Edge Projection with Custom Three.js Model
+    </div>
+    <div id="output"></div>
+    
+    <div id="controls">
+        <h3>Model Selection</h3>
+        <select id="modelSelect">
+            <option value="box">Box</option>
+            <option value="sphere">Sphere</option>
+            <option value="torus">Torus</option>
+            <option value="knot">Torus Knot</option>
+            <option value="cylinder">Cylinder</option>
+        </select>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { GUI } from 'three/examples/jsm/libs/lil-gui.module.min.js';
+        import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+        import { mergeBufferGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+        import { ProjectionGenerator } from './src/ProjectionGenerator.js';
+        import { generateEdges } from './src/utils/generateEdges.js';
+
+        // Configuration parameters
+        const params = {
+            displayModel: 'color',
+            displayProjection: true,
+            sortEdges: true,
+            includeIntersectionEdges: true,
+            projectionAxis: 'Z', // Default to Z-axis (XY plane projection)
+            modelScale: 1.0,
+            edgeColor: '#ffffff',
+            edgeOpacity: 0.9,
+            edgeWidth: 2,
+            modelType: 'box',
+            regenerate: () => {
+                task = updateEdges();
+            }
+        };
+
+        // Three.js setup variables
+        const ANGLE_THRESHOLD = 50;
+        let renderer, camera, scene, gui, controls;
+        let model, projection, group;
+        let outputContainer;
+        let task = null;
+
+        // Initialize everything
+        init();
+
+        async function init() {
+            outputContainer = document.getElementById('output');
+
+            // Renderer setup
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setClearColor(0xeeeeee, 1);
+            document.body.appendChild(renderer.domElement);
+
+            // Scene setup
+            scene = new THREE.Scene();
+
+            // Lights
+            const light = new THREE.DirectionalLight(0xffffff, 3.5);
+            light.position.set(1, 2, 3);
+            scene.add(light);
+
+            const ambientLight = new THREE.AmbientLight(0xb0bec5, 0.5);
+            scene.add(ambientLight);
+
+            // Group for the model
+            group = new THREE.Group();
+            scene.add(group);
+
+            // Camera setup
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.01, 50);
+            camera.position.set(3, 3, 3);
+            camera.lookAt(0, 0, 0);
+            camera.updateProjectionMatrix();
+
+            // Controls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.1;
+
+            // GUI
+            setupGUI();
+
+            // Model dropdown listener
+            document.getElementById('modelSelect').addEventListener('change', (e) => {
+                params.modelType = e.target.value;
+                createCustomModel();
+            });
+
+            // Create initial model
+            createCustomModel();
+
+            // Create projection object
+            projection = new THREE.LineSegments(
+                new THREE.BufferGeometry(),
+                new THREE.LineBasicMaterial({
+                    color: params.edgeColor,
+                    linewidth: params.edgeWidth,
+                    opacity: params.edgeOpacity,
+                    transparent: true
+                })
+            );
+            scene.add(projection);
+
+            // Generate initial edges
+            task = updateEdges();
+
+            // Start rendering
+            render();
+
+            // Handle window resize
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+        }
+
+        function createCustomModel() {
+            // Remove existing model
+            if (model) {
+                group.remove(model);
+                model.geometry.dispose();
+            }
+
+            // Create geometry based on selection
+            let geometry;
+            switch (params.modelType) {
+                case 'box':
+                    geometry = new THREE.BoxGeometry(2, 2, 2, 2, 2, 2);
+                    break;
+                case 'sphere':
+                    geometry = new THREE.SphereGeometry(1.5, 32, 16);
+                    break;
+                case 'torus':
+                    geometry = new THREE.TorusGeometry(1, 0.4, 16, 32);
+                    break;
+                case 'knot':
+                    geometry = new THREE.TorusKnotGeometry(1, 0.3, 100, 16);
+                    break;
+                case 'cylinder':
+                    geometry = new THREE.CylinderGeometry(1, 1, 2, 32);
+                    break;
+                default:
+                    geometry = new THREE.BoxGeometry(2, 2, 2);
+            }
+
+            // Create material and mesh
+            const material = new THREE.MeshStandardMaterial({ color: 0x3f51b5 });
+            model = new THREE.Mesh(geometry, material);
+            
+            // Add to group
+            group.add(model);
+            
+            // Regenerate edges
+            task = updateEdges();
+        }
+
+        function* updateEdges(runTime = 30) {
+            outputContainer.innerText = 'processing: --';
+
+            // Get the model's geometry
+            const timeStart = window.performance.now();
+            
+            if (!model || !model.geometry) {
+                outputContainer.innerText = 'No valid geometry found.';
+                return;
+            }
+            
+            // Clone and process geometry
+            const mergedGeometry = model.geometry.clone();
+            mergedGeometry.applyMatrix4(model.matrixWorld);
+            
+            const mergeTime = window.performance.now() - timeStart;
+            yield;
+
+            // Setup projection generator
+            const generator = new ProjectionGenerator();
+            generator.sortEdges = params.sortEdges;
+            generator.iterationTime = runTime;
+            generator.angleThreshold = ANGLE_THRESHOLD;
+            generator.includeIntersectionEdges = params.includeIntersectionEdges;
+            
+            // Set projection vector based on selected axis
+            const projectionVector = new THREE.Vector3();
+            switch (params.projectionAxis) {
+                case 'X':
+                    projectionVector.set(1, 0, 0);
+                    break;
+                case 'Y':
+                    projectionVector.set(0, 1, 0);
+                    break;
+                case 'Z':
+                    projectionVector.set(0, 0, 1);
+                    break;
+            }
+            generator.projectionVector = projectionVector;
+
+            // Generate the projection with progress callback
+            const genTask = generator.generate(mergedGeometry, {
+                onProgress: (p, data) => {
+                    outputContainer.innerText = `processing: ${parseFloat((p * 100).toFixed(2))}%`;
+                    if (params.displayProjection) {
+                        projection.geometry.dispose();
+                        projection.geometry = data.getLineGeometry(0, params.projectionAxis);
+                    }
+                },
+            });
+
+            // Process the generator
+            let result = genTask.next();
+            while (!result.done) {
+                result = genTask.next();
+                yield;
+            }
+
+            const geometry = result.value;
+            const trimTime = window.performance.now() - timeStart;
+
+            // Update projection geometry
+            projection.geometry.dispose();
+            projection.geometry = geometry.getLineGeometry(0, params.projectionAxis);
+            
+            // Show timing information
+            outputContainer.innerText =
+                `geometry processing: ${mergeTime.toFixed(2)}ms\n` +
+                `edge projection: ${trimTime.toFixed(2)}ms`;
+        }
+
+        function setupGUI() {
+            gui = new GUI();
+            
+            // Display options
+            const displayFolder = gui.addFolder('Display');
+            displayFolder.add(params, 'displayModel', [
+                'none',
+                'color',
+                'wireframe'
+            ]).onChange(value => {
+                if (model) {
+                    model.visible = value !== 'none';
+                    if (value === 'wireframe' && model.material) {
+                        model.material.wireframe = true;
+                    } else if (model.material) {
+                        model.material.wireframe = false;
+                    }
+                }
+            });
+            
+            displayFolder.add(params, 'displayProjection').onChange(value => {
+                if (projection) projection.visible = value;
+            });
+            
+            // Processing options
+            const processingFolder = gui.addFolder('Processing');
+            processingFolder.add(params, 'sortEdges');
+            processingFolder.add(params, 'includeIntersectionEdges');
+            processingFolder.add(params, 'regenerate').name('Regenerate Edges');
+            
+            // Projection options
+            const projectionFolder = gui.addFolder('Projection');
+            projectionFolder.add(params, 'projectionAxis', ['X', 'Y', 'Z']).name('Projection Axis').onChange(() => {
+                task = updateEdges();
+            });
+            
+            // Edge appearance
+            const edgeFolder = gui.addFolder('Edge Appearance');
+            edgeFolder.addColor(params, 'edgeColor').name('Edge Color').onChange(() => {
+                if (projection && projection.material) {
+                    projection.material.color.set(params.edgeColor);
+                }
+            });
+            
+            edgeFolder.add(params, 'edgeOpacity', 0, 1).name('Edge Opacity').onChange(() => {
+                if (projection && projection.material) {
+                    projection.material.opacity = params.edgeOpacity;
+                }
+            });
+            
+            edgeFolder.add(params, 'edgeWidth', 1, 10, 1).name('Edge Width').onChange(() => {
+                if (projection && projection.material) {
+                    projection.material.linewidth = params.edgeWidth;
+                }
+            });
+            
+            // Open all folders
+            displayFolder.open();
+            processingFolder.open();
+            projectionFolder.open();
+            edgeFolder.open();
+        }
+
+        function render() {
+            requestAnimationFrame(render);
+
+            // Process any pending tasks
+            if (task) {
+                const res = task.next();
+                if (res.done) {
+                    task = null;
+                }
+            }
+
+            // Update controls
+            controls.update();
+
+            // Render the scene
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html> 
