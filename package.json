@@ -1,6 +1,8 @@
 {
   "dependencies": {
     "clipper2-js": "^1.2.4",
+    "dxf-writer": "^1.18.4",
+    "simplify-js": "^1.2.4",
     "three": "^0.175.0",
     "three-mesh-bvh": "^0.9.0"
   }

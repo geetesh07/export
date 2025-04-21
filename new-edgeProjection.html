@@ -37,7 +37,7 @@
         #fileUpload {
             position: absolute;
             top: 40px;
-            right: 10px;
+            left: 10px;
             z-index: 100;
             background-color: rgba(255, 255, 255, 0.9);
             padding: 15px;
@@ -58,23 +58,20 @@
             font-size: 12px;
         }
 
-        #uploadButton {
+        #loadButton {
             margin-top: 10px;
-            padding: 5px 10px;
+            padding: 8px 15px;
             background-color: #4CAF50;
             color: white;
             border: none;
-            border-radius: 3px;
+            border-radius: 4px;
             cursor: pointer;
-            font-size: 12px;
+            font-size: 14px;
+            width: 100%;
         }
 
-        #uploadButton:hover {
+        #loadButton:hover {
             background-color: #45a049;
-        }
-
-        .hidden {
-            display: none;
         }
 
         #modelStatus {
@@ -82,111 +79,78 @@
             margin-top: 8px;
             color: #666;
         }
-        
-        #tipBox {
-            position: absolute;
-            top: 40px;
-            left: 10px;
-            z-index: 100;
-            background-color: rgba(255, 255, 255, 0.9);
-            padding: 15px;
-            border-radius: 5px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-            max-width: 250px;
-            font-size: 12px;
-        }
-        
-        #tipBox h3 {
-            margin-top: 0;
-            margin-bottom: 10px;
-            font-size: 14px;
-        }
-        
-        #tipBox ul {
-            padding-left: 20px;
-            margin: 8px 0;
-        }
-        
-        #tipBox li {
-            margin-bottom: 5px;
-        }
     </style>
     <script type="importmap">
-        {
-            "imports": {
-                "three": "https://unpkg.com/three@0.136.0/build/three.module.js",
-                "three/examples/jsm/libs/lil-gui.module.min.js": "https://unpkg.com/three@0.136.0/examples/jsm/libs/lil-gui.module.min.js",
-                "three/examples/jsm/controls/OrbitControls.js": "https://unpkg.com/three@0.136.0/examples/jsm/controls/OrbitControls.js",
-                "three/examples/jsm/loaders/GLTFLoader.js": "https://unpkg.com/three@0.136.0/examples/jsm/loaders/GLTFLoader.js",
-                "three/examples/jsm/utils/BufferGeometryUtils.js": "https://unpkg.com/three@0.136.0/examples/jsm/utils/BufferGeometryUtils.js",
-                "three/examples/jsm/libs/meshopt_decoder.module.js": "https://unpkg.com/three@0.136.0/examples/jsm/libs/meshopt_decoder.module.js",
-                "three-mesh-bvh": "https://unpkg.com/three-mesh-bvh@0.5.19/build/index.module.js"
-            }
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.136.0/build/three.module.js",
+            "three/examples/jsm/libs/lil-gui.module.min.js": "https://unpkg.com/three@0.136.0/examples/jsm/libs/lil-gui.module.min.js",
+            "three/examples/jsm/controls/OrbitControls.js": "https://unpkg.com/three@0.136.0/examples/jsm/controls/OrbitControls.js",
+            "three/examples/jsm/loaders/GLTFLoader.js": "https://unpkg.com/three@0.136.0/examples/jsm/loaders/GLTFLoader.js",
+            "three/examples/jsm/loaders/STLLoader.js": "https://unpkg.com/three@0.136.0/examples/jsm/loaders/STLLoader.js",
+            "three/examples/jsm/utils/BufferGeometryUtils.js": "https://unpkg.com/three@0.136.0/examples/jsm/utils/BufferGeometryUtils.js",
+            "three/examples/jsm/libs/meshopt_decoder.module.js": "https://unpkg.com/three@0.136.0/examples/jsm/libs/meshopt_decoder.module.js",
+            "three-mesh-bvh": "https://unpkg.com/three-mesh-bvh@0.5.19/build/index.module.js",
+            "dxf-writer": "./node_modules/dxf-writer/index.js"
         }
+    }
     </script>
 </head>
 <body>
     <div id="info">
         Accelerated geometry edge projection and clipping onto<br/>the XZ plane for orthographic vector views.
     </div>
-    <div id="output"></div>
     
     <div id="fileUpload">
         <h3>Upload Custom Model</h3>
-        <label for="modelFile">Select GLB file:</label>
-        <input type="file" id="modelFile" accept=".glb" />
-        <button id="uploadButton">Load Model</button>
+        <label for="modelFile">Select GLB or STL file:</label>
+        <input type="file" id="modelFile" accept=".glb,.stl" />
+        <button id="loadButton">Load Model</button>
         <div id="modelStatus">Using default model</div>
     </div>
     
-    <div id="tipBox">
-        <h3>Tips for Large Models</h3>
-        <ul>
-            <li>Use the <b>Model Scale</b> slider to scale down large models</li>
-            <li>Adjust <b>Camera FOV</b> for better visibility</li>
-            <li>Current projection is along Y-axis (onto XZ plane)</li>
-            <li>Use scroll wheel to zoom in/out</li>
-            <li>Right-click & drag to pan around</li>
-        </ul>
-    </div>
+    <div id="output"></div>
 
     <script type="module">
-        // This is a workaround to handle the exports properly
-        import * as THREE from 'three';
-        import { GUI } from 'three/examples/jsm/libs/lil-gui.module.min.js';
-        import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-        import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-        import { mergeBufferGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-        import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
+        // Wait for DOM to be fully loaded before running the script
+        document.addEventListener('DOMContentLoaded', async function() {
+            try {
+                // Create a global variable to store the file URL
+                window.customModelUrl = null;
+                window.fileType = null;
 
-        // Create a global variable to store the file URL
-        window.customModelUrl = null;
-        
-        // Add event listener for file upload button
-        document.getElementById('uploadButton').addEventListener('click', function() {
-            const fileInput = document.getElementById('modelFile');
-            if (fileInput.files.length > 0) {
-                const file = fileInput.files[0];
-                // Create a URL for the file
-                window.customModelUrl = URL.createObjectURL(file);
+                // Add click handler for load button
+                document.getElementById('loadButton').addEventListener('click', async function() {
+                    const fileInput = document.getElementById('modelFile');
+                    if (fileInput.files.length > 0) {
+                        const file = fileInput.files[0];
+                        window.customModelUrl = URL.createObjectURL(file);
+                        window.fileType = file.name.toLowerCase().endsWith('.stl') ? 'stl' : 'glb';
+                        
+                        // Update status
+                        document.getElementById('modelStatus').textContent = `Loading: ${file.name}`;
+                        
+                        // Reload the scene with the new model
+                        if (window.reloadScene) {
+                            await window.reloadScene();
+                        }
+                    } else {
+                        alert('Please select a file first');
+                    }
+                });
+
+                // Now import our application script
+                await import('./edgeProjection.js');
                 
-                // Update status
-                document.getElementById('modelStatus').innerText = `Selected: ${file.name}`;
-                
-                // Reload the scene
+                // Load the default model
                 if (window.reloadScene) {
-                    window.reloadScene();
-                } else {
-                    console.log('Custom model URL created:', window.customModelUrl);
-                    alert('Model uploaded! Please refresh the page to see changes.');
+                    await window.reloadScene();
                 }
-            } else {
-                alert('Please select a .glb file first');
+            } catch (error) {
+                console.error('Error loading application:', error);
+                document.getElementById('modelStatus').textContent = 'Error loading application';
             }
         });
-
-        // Now import our application script
-        import './edgeProjection.js';
     </script>
 </body>
 </html> 
